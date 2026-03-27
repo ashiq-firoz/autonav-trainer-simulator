@@ -1,0 +1,43 @@
+[project]
+name = "simulator"
+version = "0.1.0"
+description = "3D self-driving car simulator with CNN and LTC model testing"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "panda3d>=1.10.14",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+    "timm>=0.9.0",
+    "captum>=0.6.0",
+    "ncps>=0.0.7",
+    "opencv-python>=4.8.0",
+    "numpy>=1.26,<2.0",
+    "pillow>=9.0.0",
+    "hypothesis>=6.0.0",
+    "pytest>=7.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0.0",
+    "hypothesis>=6.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "engine",
+    "models",
+    "xai",
+    "hud",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
