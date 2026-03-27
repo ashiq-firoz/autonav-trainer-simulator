@@ -3,6 +3,7 @@ Background DeepLIFT worker thread.
 Consumes (frame_tensor, output_index) jobs, produces AttributionResult.
 Non-blocking: main loop always gets the latest completed result.
 """
+import copy
 import logging
 import queue
 import threading
@@ -31,7 +32,7 @@ class AttributionResult:
 class DeepLIFTWorker(threading.Thread):
     def __init__(self, model: nn.Module):
         super().__init__(daemon=True, name="DeepLIFTWorker")
-        self.model = model
+        self.model = copy.deepcopy(model)  # isolated copy — never shares hooks with inference
         self._input_queue: queue.Queue = queue.Queue(maxsize=1)
         self._result_lock = threading.Lock()
         self._latest_result: Optional[AttributionResult] = None
@@ -80,7 +81,7 @@ class DeepLIFTWorker(threading.Thread):
             return self._latest_result
 
     def switch_model(self, model: nn.Module) -> None:
-        self.model = model
+        self.model = copy.deepcopy(model)
 
     # ------------------------------------------------------------------
     # Computation
@@ -95,7 +96,17 @@ class DeepLIFTWorker(threading.Thread):
         baseline = torch.zeros_like(inp)
 
         dl = DeepLift(self.model)
-        attributions = dl.attribute(inp, baseline, target=output_index)
+        try:
+            attributions = dl.attribute(inp, baseline, target=output_index)
+        finally:
+            # Captum 0.8+ hook cleanup — handle both API versions
+            try:
+                dl._remove_hooks([])
+            except TypeError:
+                try:
+                    dl._remove_hooks()
+                except Exception:
+                    pass
 
         # (1, 3, 224, 224) -> (3, 224, 224)
         attr_np = attributions.squeeze(0).detach().cpu().numpy()

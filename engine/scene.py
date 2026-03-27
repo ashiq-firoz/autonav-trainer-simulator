@@ -9,36 +9,49 @@ import logging
 from typing import List, Optional
 
 import numpy as np
+from panda3d.core import GraphicsOutput
 
 log = logging.getLogger(__name__)
 
-# Texture download URLs (CC0 from ambientCG)
-TEXTURE_URLS = {
-    "asphalt_color":  "https://ambientcg.com/get?file=Asphalt012_1K-JPG_Color.jpg",
-    "asphalt_normal": "https://ambientcg.com/get?file=Asphalt012_1K-JPG_NormalGL.jpg",
-    "lane_marking":   "https://ambientcg.com/get?file=PaintedWood001_1K-JPG_Color.jpg",
-    "sky":            "https://dl.polyhaven.org/file/ph-assets/HDRIs/jpg/1k/kloofendal_48d_partly_cloudy_1k.jpg",
-    "grass":          "https://ambientcg.com/get?file=Ground054_1K-JPG_Color.jpg",
-    "tree_billboard": "https://ambientcg.com/get?file=Bark007_1K-JPG_Color.jpg",
-}
+
+def _make_asphalt_texture(size: int = 512) -> np.ndarray:
+    """Generate a procedural asphalt texture (dark grey with noise)."""
+    rng = np.random.default_rng(42)
+    base = rng.integers(45, 75, (size, size, 3), dtype=np.uint8)
+    # Add coarse grain
+    grain = rng.integers(0, 20, (size, size, 1), dtype=np.uint8)
+    return np.clip(base.astype(np.int16) + grain - 10, 0, 255).astype(np.uint8)
 
 
-def _download_textures(asset_dir: str) -> None:
-    """Download CC0 textures if not already present."""
-    try:
-        import urllib.request
-        tex_dir = os.path.join(asset_dir, "textures")
-        os.makedirs(tex_dir, exist_ok=True)
-        for name, url in TEXTURE_URLS.items():
-            dest = os.path.join(tex_dir, f"{name}.jpg")
-            if not os.path.exists(dest):
-                log.info("Downloading texture: %s", name)
-                try:
-                    urllib.request.urlretrieve(url, dest)
-                except Exception as e:
-                    log.warning("Could not download %s: %s — using fallback color.", name, e)
-    except Exception as e:
-        log.warning("Texture download failed: %s", e)
+def _make_grass_texture(size: int = 256) -> np.ndarray:
+    """Generate a procedural grass/ground texture."""
+    rng = np.random.default_rng(7)
+    r = rng.integers(30, 60, (size, size), dtype=np.uint8)
+    g = rng.integers(80, 130, (size, size), dtype=np.uint8)
+    b = rng.integers(20, 50, (size, size), dtype=np.uint8)
+    return np.stack([r, g, b], axis=2)
+
+
+def _make_sky_texture(w: int = 512, h: int = 256) -> np.ndarray:
+    """Generate a simple gradient sky texture."""
+    arr = np.zeros((h, w, 3), dtype=np.uint8)
+    for y in range(h):
+        t = y / h
+        r = int(135 * (1 - t) + 200 * t)
+        g = int(206 * (1 - t) + 220 * t)
+        b = int(235 * (1 - t) + 240 * t)
+        arr[y, :] = [r, g, b]
+    return arr
+
+
+def _numpy_to_panda_texture(arr: np.ndarray, name: str = "tex"):
+    """Convert (H, W, 3) uint8 RGB numpy array to a Panda3D Texture."""
+    from panda3d.core import Texture
+    h, w = arr.shape[:2]
+    tex = Texture(name)
+    tex.setup_2d_texture(w, h, Texture.TUnsignedByte, Texture.FRgb)
+    tex.set_ram_image(bytes(arr.tobytes()))
+    return tex
 
 
 class SceneManager:
@@ -49,11 +62,13 @@ class SceneManager:
         self.road_width = config.road_width
         self.tiles_ahead = config.road_tiles_ahead
 
-        self._asset_dir = os.path.join(os.path.dirname(__file__), "..", "assets")
-        _download_textures(self._asset_dir)
+        # Pre-generate procedural textures
+        self._asphalt_tex = _numpy_to_panda_texture(_make_asphalt_texture(), "asphalt")
+        self._grass_tex   = _numpy_to_panda_texture(_make_grass_texture(), "grass")
+        self._sky_tex     = _numpy_to_panda_texture(_make_sky_texture(), "sky")
 
         self._road_tiles: List = []
-        self._next_tile_y: float = 0.0   # Y position of next tile to spawn
+        self._next_tile_y: float = 0.0
         self._haze_effect = None
 
         self._setup_lighting()
@@ -84,8 +99,7 @@ class SceneManager:
     # ------------------------------------------------------------------
 
     def _setup_sky(self) -> None:
-        from panda3d.core import CardMaker, TextureStage, Texture
-        sky_path = os.path.join(self._asset_dir, "textures", "sky.jpg")
+        from panda3d.core import CardMaker
         cm = CardMaker("sky_bg")
         cm.set_frame(-200, 200, -10, 120)
         sky_np = self.base.render.attach_new_node(cm.generate())
@@ -93,11 +107,7 @@ class SceneManager:
         sky_np.set_bin("background", 0)
         sky_np.set_depth_write(False)
         sky_np.set_compass()
-        if os.path.exists(sky_path):
-            tex = self.base.loader.load_texture(sky_path)
-            sky_np.set_texture(tex)
-        else:
-            sky_np.set_color(0.53, 0.81, 0.98, 1)  # fallback sky blue
+        sky_np.set_texture(self._sky_tex)
 
     # ------------------------------------------------------------------
     # Road tile pool
@@ -109,31 +119,19 @@ class SceneManager:
             self._next_tile_y += self.tile_length
 
     def _spawn_tile(self, y_pos: float):
-        from panda3d.core import CardMaker, TextureStage, Texture, Vec3
+        from panda3d.core import CardMaker, TextureStage
         w = self.road_width
         l = self.tile_length
 
-        # Road surface
         cm = CardMaker(f"road_{y_pos:.0f}")
         cm.set_frame(-w / 2, w / 2, 0, l)
         tile_np = self.base.render.attach_new_node(cm.generate())
-        tile_np.set_p(-90)   # lay flat
+        tile_np.set_p(-90)
         tile_np.set_pos(0, y_pos, 0)
+        tile_np.set_texture(self._asphalt_tex)
+        tile_np.set_tex_scale(TextureStage.get_default(), 2, 4)
 
-        asphalt_path = os.path.join(self._asset_dir, "textures", "asphalt_color.jpg")
-        if os.path.exists(asphalt_path):
-            tex = self.base.loader.load_texture(asphalt_path)
-            tex.set_wrap_u(Texture.WMRepeat)
-            tex.set_wrap_v(Texture.WMRepeat)
-            tile_np.set_texture(tex)
-            tile_np.set_tex_scale(TextureStage.get_default(), 2, 4)
-        else:
-            tile_np.set_color(0.25, 0.25, 0.25, 1)  # dark grey fallback
-
-        # Lane markings (dashed white lines)
         self._add_lane_markings(tile_np, y_pos, w, l)
-
-        # Roadside vegetation
         self._add_vegetation(y_pos, l)
 
         self._road_tiles.append(tile_np)
@@ -149,8 +147,7 @@ class SceneManager:
             mark_np.set_color(1, 1, 1, 1)
 
     def _add_vegetation(self, y_pos: float, l: float) -> None:
-        from panda3d.core import CardMaker, Texture
-        grass_path = os.path.join(self._asset_dir, "textures", "grass.jpg")
+        from panda3d.core import CardMaker
         for side in [-1, 1]:
             x_base = side * (self.road_width / 2 + 2)
             for i in range(3):
@@ -158,15 +155,10 @@ class SceneManager:
                 cm.set_frame(-1.5, 1.5, 0, 4)
                 veg_np = self.base.render.attach_new_node(cm.generate())
                 veg_np.set_pos(x_base + random.uniform(-1, 1),
-                               y_pos + random.uniform(0, l),
-                               0)
+                               y_pos + random.uniform(0, l), 0)
                 veg_np.set_billboard_point_eye()
-                if os.path.exists(grass_path):
-                    tex = self.base.loader.load_texture(grass_path)
-                    veg_np.set_texture(tex)
-                    veg_np.set_transparency(1)
-                else:
-                    veg_np.set_color(0.2, 0.6, 0.2, 1)
+                veg_np.set_texture(self._grass_tex)
+                veg_np.set_transparency(1)
 
     # ------------------------------------------------------------------
     # Tile recycling
@@ -231,25 +223,30 @@ class SceneManager:
             self._offscreen = None
 
     def capture_frame(self) -> np.ndarray:
-        """Capture current camera view as (224, 224, 3) uint8 BGR numpy array."""
+        """Capture current view as (224, 224, 3) uint8 BGR numpy array."""
         try:
-            if self._offscreen:
-                tex = self.base.graphics_engine.extract_texture_data(
-                    self._offscreen.get_texture(), self.base.win.get_gsg()
-                )
-            # Fallback: screenshot from main window, resize
-            from panda3d.core import PNMImage
-            img = PNMImage()
-            self.base.win.get_screenshot(img)
-            w, h = img.get_x_size(), img.get_y_size()
-            arr = np.zeros((h, w, 3), dtype=np.uint8)
-            for y in range(h):
-                for x in range(w):
-                    r = int(img.get_red_val(x, y))
-                    g = int(img.get_green_val(x, y))
-                    b = int(img.get_blue_val(x, y))
-                    arr[y, x] = [b, g, r]  # BGR
             import cv2
+            from panda3d.core import Texture, GraphicsOutput
+            # Attach a RAM-copy texture to the window once
+            if not hasattr(self, '_capture_tex'):
+                self._capture_tex = Texture("capture")
+                self.base.win.add_render_texture(
+                    self._capture_tex,
+                    GraphicsOutput.RTMCopyRam,
+                    GraphicsOutput.RTPColor,
+                )
+            # Pull latest frame into RAM
+            self.base.graphicsEngine.extract_texture_data(
+                self._capture_tex, self.base.win.get_gsg()
+            )
+            # get_ram_image_as returns BGRA bytes in Panda3D
+            data = self._capture_tex.get_ram_image_as("BGR")
+            w = self._capture_tex.get_x_size()
+            h = self._capture_tex.get_y_size()
+            if w == 0 or h == 0 or len(data) == 0:
+                return np.zeros((224, 224, 3), dtype=np.uint8)
+            arr = np.frombuffer(bytes(data), dtype=np.uint8).reshape((h, w, 3))
+            arr = np.flipud(arr)  # Panda3D stores bottom-up
             return cv2.resize(arr, (224, 224))
         except Exception as e:
             log.warning("Frame capture failed: %s — returning blank frame.", e)

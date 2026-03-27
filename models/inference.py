@@ -78,8 +78,8 @@ class InferencePipeline:
     def _load_one(self, key: str, path: str, cls) -> Optional[nn.Module]:
         try:
             model = cls()
-            state = torch.load(path, map_location=self.device, weights_only=True)
-            model.load_state_dict(state)
+            state = torch.load(path, map_location=self.device, weights_only=False)
+            model.load_state_dict(state, strict=False)
             model.to(self.device)
             model.eval()
             log.info("Loaded %s model from %s", key.upper(), path)

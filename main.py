@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 from direct.showbase.ShowBase import ShowBase
 from panda3d.core import WindowProperties, ClockObject
 
-from config import Config
+from config import Config as SimConfig
 from engine.scene import SceneManager
 from engine.vehicle import VehicleController
 from engine.haze import HazeEffect
@@ -38,9 +38,9 @@ from xai.visualizer import XAIPanel
 
 
 class SimulatorApp(ShowBase):
-    def __init__(self, config: Config):
+    def __init__(self, config: SimConfig):
         super().__init__()
-        self.config = config
+        self.sim_config = config
 
         # Window setup
         props = WindowProperties()
@@ -116,7 +116,7 @@ class SimulatorApp(ShowBase):
         self.accept("x",           self.cycle_xai_output)
         self.accept("escape",      self.quit_sim)
 
-        if self.config.manual_override:
+        if self.sim_config.manual_override:
             self.accept("arrow_left",  lambda: self._set_steer(-1.0))
             self.accept("arrow_right", lambda: self._set_steer(1.0))
             self.accept("arrow_left-up",  lambda: self._set_steer(0.0))
@@ -232,7 +232,7 @@ class SimulatorApp(ShowBase):
 
 
 def main():
-    config = Config()
+    config = SimConfig()
     app = SimulatorApp(config)
     app.run()
 
