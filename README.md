@@ -14,7 +14,7 @@ A Panda3D-based 3D simulator for testing CNN and LTC (Liquid Time-Constant) mode
 ## Installation
 
 ```bash
-# Navigate to simulator directory
+git clone 
 cd simulator
 
 # Install dependencies using uv
@@ -57,6 +57,18 @@ Place your trained model weights in the `weights/` directory:
 
 - `weights/cnn_model.pth` - EfficientNetV2 CNN model
 - `weights/ltc_model.pth` - LTC liquid network model
+
+Download weights using these links:
+
+- `cnn_model.pth` - https://drive.google.com/file/d/1MVSSfLaWVyOjy7CHZZRy5ADgnYdG71ME/view?usp=sharing
+- `ltc_model.pth` - https://drive.google.com/file/d/1y00Qip8d9FAtmaVst1wBae1TiY-yjrW9/view?usp=drive_link
+
+or 
+```bash
+sh download_weights.sh
+or
+./download_weights.sh
+```
 
 The simulator expects models with the following architecture:
 

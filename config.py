@@ -42,4 +42,4 @@ class Config:
     log_inference_every: int = 100      # Log average inference time every N frames
 
     # --- Active model ---
-    active_model: str = "cnn"           # Starting model: "cnn" or "ltc"
+    active_model: str = "ltc"           # Starting model: "cnn" or "ltc"
