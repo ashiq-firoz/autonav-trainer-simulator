@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 class Config:
     # --- Model weights ---
     cnn_model_path: str = "weights/cnn_model.pth"   # Path to EfficientNetV2 CNN weights
-    ltc_model_path: str = "weights/ltc_model.pth"   # Path to LTC/CfC liquid network weights
+    ltc_model_path: str = "assets/weights/best_ltc.pth" #"weights/ltc_model.pth" #   # Path to LTC/CfC liquid network weights
 
     # --- XAI ---
     xai_update_interval: int = 5        # Frames between DeepLIFT attribution updates
@@ -26,8 +26,8 @@ class Config:
 
     # --- Vehicle ---
     max_speed_kmh: float = 120.0        # Maximum vehicle speed in km/h
-    accel_rate: float = 20.0            # Acceleration rate (km/h per second at full gas)
-    decel_rate: float = 40.0            # Deceleration rate (km/h per second at full brake)
+    accel_rate: float = 50.0            # Acceleration rate (km/h per second at full gas)
+    decel_rate: float = 30.0            # Deceleration rate (km/h per second at full brake)
     turn_rate: float = 60.0             # Max heading change rate in degrees/second at full steer
 
     # --- Road / Scene ---
@@ -42,4 +42,4 @@ class Config:
     log_inference_every: int = 100      # Log average inference time every N frames
 
     # --- Active model ---
-    active_model: str = "ltc"           # Starting model: "cnn" or "ltc"
+    active_model: str = "cnn"           # Starting model: "cnn" or "ltc"
